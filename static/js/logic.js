@@ -1,14 +1,30 @@
 // Create the streets tile layer
-let streets = L.tileLayer('https://api.mapbox.com/styles/v1/mapbox/streets-v11/tiles/{z}/{x}/{y}?access_token={accessToken}', {
+let streets = L.tileLayer('https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token={accessToken}', {
   attribution: 'Map data © <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery (c) <a href="https://www.mapbox.com/">Mapbox</a>',
   maxZoom: 18,
+  id: 'mapbox/streets-v11',
+  tileSize: 512,
+  zoomOffset: -1,
+  accessToken: API_KEY
+});
+
+// Create the dark tile layer
+let dark = L.tileLayer('https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token={accessToken}', {
+  attribution: 'Map data © <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery (c) <a href="https://www.mapbox.com/">Mapbox</a>',
+  maxZoom: 18,
+  id: 'mapbox/dark-v10',
+  tileSize: 512,
+  zoomOffset: -1,
   accessToken: API_KEY
 });
 
 // Create the satellite tile layer
-let satelliteStreets = L.tileLayer('https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v11/tiles/{z}/{x}/{y}?access_token={accessToken}', {
+let satelliteStreets = L.tileLayer('https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token={accessToken}', {
   attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery (c) <a href="https://www.mapbox.com/">Mapbox</a>',
   maxZoom: 18,
+  id: 'mapbox/satellite-streets-v11',
+  tileSize: 512,
+  zoomOffset: -1,
   accessToken: API_KEY
 });
 
@@ -16,23 +32,26 @@ let satelliteStreets = L.tileLayer('https://api.mapbox.com/styles/v1/mapbox/sate
 let map = L.map('mapid', {
   center: [40.7, -94.5],
   zoom: 3,
-  layers: [streets]
+  layers: [streets, dark, satelliteStreets]
 });
 
 // Create a base layer to hold all maps
 let baseMaps = {
   "Streets": streets,
+  "Dark": dark,
   "Satellite": satelliteStreets
 };
 
 // Add layer groups
 let allEarthquakes = new L.LayerGroup();
 let tectonicPlates = new L.LayerGroup();
+let majorEarthquakes = new L.LayerGroup();
 
 // Add overlay
 let overlays = {
   "Earthquakes": allEarthquakes,
-  "Tectonic Plates": tectonicPlates
+  "Tectonic Plates": tectonicPlates,
+  "Major Earthquakes": majorEarthquakes
 };
 
 // Add layer control to map
@@ -105,28 +124,57 @@ d3.json("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geoj
   allEarthquakes.addTo(map);
 
   // Retrieve the major earthquake GeoJSON data >4.5 mag for the week
-  d3.json("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson").then(function (data) {
+  d3.json("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_week.geojson").then(function (majorData) {
 
-    // 4. Use the same style as the earthquake data.
+    // Use the same style as the earthquake data
+    function styleInfo(feature) {
+      return {
+        opacity: 1,
+        fillOpacity: 1,
+        fillColor: getColor(feature.properties.mag),
+        color: "#000000",
+        radius: getRadius(feature.properties.mag),
+        stroke: true,
+        weight: 0.5
+      };
+    }
 
+    // Determine the color of the circle based on the magnitude of the earthquake
+    function getColor(magnitude) {
+      if (magnitude > 6) {
+        return "#ea2c2c";
+      }
+      if (magnitude > 5) {
+        return "#ee9c00";
+      }
+      return "#d4ee00";
+    }
 
-    // 5. Change the color function to use three colors for the major earthquakes based on the magnitude of the earthquake.
+    // Determine the radius of the earthquake marker based on its magnitude
+    // Earthquakes with a magnitude of 0 will be plotted with a radius of 1
+    function getRadius(magnitude) {
+      if (magnitude === 0) {
+        return 1;
+      }
+      return magnitude * 4;
+    }
 
+    // Create a GeoJSON layer with the retrieved data
+    L.geoJson(data, {
+      // Turn each feature into a circleMarker on the map
+      pointToLayer: function (feature, latlng) {
+        return L.circleMarker(latlng);
+      },
 
-    // 6. Use the function that determines the radius of the earthquake marker based on its magnitude.
+      // Set the style for each circleMarker using styleInfo function
+      style: styleInfo,
 
-
-    // 7. Creating a GeoJSON layer with the retrieved data that adds a circle to the map 
-    // sets the style of the circle, and displays the magnitude and location of the earthquake
-    //  after the marker has been created and styled.
-
-    // L.geoJson(, {
-
-    // });
-
-    // 8. Add the major earthquakes layer to the map.
-
-    // 9. Close the braces and parentheses for the major earthquake data.
+      // Create a pop-up for each circleMarker to display the magnitude and
+      // location of the earthquake after the marker has been created and styled
+      onEachFeature: function (feature, layer) {
+        layer.bindPopup("Magnitude: " + feature.properties.mag + "<br>Location: " + feature.properties.place);
+      }
+    }).addTo(majorEarthquakes);
   });
 
   // Create legend control object
@@ -160,7 +208,6 @@ d3.json("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geoj
   // Add the legend to the map
   legend.addTo(map);
 
-
   // Retrieve the tectonic plate geoJSON data
   d3.json("https://raw.githubusercontent.com/fraxen/tectonicplates/master/GeoJSON/PB2002_boundaries.json")
     .then(function (tectonicData) {
@@ -168,14 +215,8 @@ d3.json("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geoj
         color: "orange",
         weight: 2.5
       }).addTo(tectonicPlates);
-
-      // tectonicPlates.addTo(map);
-
     });
-
-  // NOTE: the following can be placed inside or outside the d3.json() scope.
-  // Finish all deliverables, then test a consistent scheme for layer.addTo(map) scope
-
+      
   // Add tectonic plate layer to map
   tectonicPlates.addTo(map);
 });
